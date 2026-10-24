@@ -13,10 +13,11 @@ import argparse
 import os
 import sys
 import time
-import unicodedata
 from pathlib import Path
 
 import requests
+
+from audio_items import select_items
 
 VOICE_ID = "M7AHsCtFdpWTIL58I3ap"  # Dongjae（男声）
 MODEL_ID = "eleven_v4"
@@ -30,35 +31,6 @@ TIMEOUT = 60
 
 ROOT = Path(__file__).resolve().parent.parent
 AUDIO_DIR = ROOT / "audio"
-
-# 例字：辅音配 ㅏ、元音配 ㅇ（与 data.js 保持一致）
-SYLLABLES = (
-    "가 까 나 다 따 라 마 바 빠 사 싸 아 자 짜 차 카 타 파 하 "
-    "아 야 어 여 오 요 우 유 으 이 애 얘 에 예 와 왜 외 워 웨 위 의"
-).split()
-
-# 对比练习单词
-WORDS = "불 풀 뿔 달 탈 딸 자다 차다 짜다 비다 피다 삐다 사다 싸다".split()
-
-
-def nfc(s):
-    return unicodedata.normalize("NFC", s)
-
-
-def build_items():
-    """返回 [(韩文, 请求文本)]，去重且保持顺序。单个音节末尾加句号，单词不加。"""
-    items, seen = [], set()
-    for s in SYLLABLES:
-        s = nfc(s)
-        if s not in seen:
-            seen.add(s)
-            items.append((s, s + "."))
-    for w in WORDS:
-        w = nfc(w)
-        if w not in seen:
-            seen.add(w)
-            items.append((w, w))
-    return items
 
 
 def load_api_key():
@@ -142,15 +114,10 @@ def main():
     parser.add_argument("--force", action="store_true", help="覆盖已存在的文件")
     args = parser.parse_args()
 
-    items = build_items()
-    if args.only:
-        wanted = [nfc(x) for x in args.only]
-        known = {k for k, _ in items}
-        unknown = [w for w in wanted if w not in known]
-        if unknown:
-            print("不在生成列表里：" + " ".join(unknown))
-            sys.exit(2)
-        items = [it for it in items if it[0] in wanted]
+    items, unknown = select_items(args.only)
+    if unknown:
+        print("不在生成列表里：" + " ".join(unknown))
+        sys.exit(2)
 
     api_key = load_api_key()
     if not api_key:

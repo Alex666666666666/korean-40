@@ -20,11 +20,16 @@
       <button class="tab" role="tab" id="tab-pairs" aria-controls="panel-pairs" aria-selected="false" data-tab="pairs">对比练习</button>
     </nav>
     <div class="settings">
-      <button class="icon-btn" id="settings-btn" type="button" aria-label="设置：自动翻回秒数" aria-expanded="false" aria-controls="settings-pop">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/></svg>
-        <span id="settings-value">3 秒</span>
+      <button class="icon-btn" id="settings-btn" type="button" aria-label="设置：发音来源和自动翻回秒数" aria-expanded="false" aria-controls="settings-pop">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+        <span id="settings-value">AI 音 · 3 秒</span>
       </button>
       <div class="popover" id="settings-pop" hidden>
+        <div class="pop-label">发音来源</div>
+        <div class="seg" role="radiogroup" aria-label="发音来源">
+          <button type="button" role="radio" data-source="el">AI 音<small>ElevenLabs</small></button>
+          <button type="button" role="radio" data-source="ms">标准音<small>微软</small></button>
+        </div>
         <div class="pop-label">卡片自动翻回</div>
         <div class="seg" role="radiogroup" aria-label="自动翻回秒数">
           <button type="button" role="radio" data-sec="2">2 秒</button>
@@ -54,7 +59,7 @@
     </section>
   </main>
 
-  <footer class="foot">点击卡片翻转并发音 · 翻转中再点一次重播</footer>
+  <footer class="foot">点击卡片翻转并发音 · 翻转中再点一次重播 · 背面「对比」先播 AI 音再播标准音</footer>
 
   <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
 

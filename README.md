@@ -12,10 +12,23 @@
 - **元音**：5 个基本元音、i+ 系列、+i 系列、u+ 系列、其他；每个系列标题下有组合规则小字，组合元音卡片正面显示组合（如 i+a）
 - **对比练习**：불/풀/뿔、달/탈/딸、자다/차다/짜다、비다/피다/삐다、사다/싸다，点击单词播放并显示中文意思，每组有「依次播放」按钮
 - **卡片**：正面大号字母；点击后 3D 翻转，背面显示罗马音、例字、字母名并播放读音；默认 3 秒后自动翻回，翻转中再点一次会重播并重新计时
-- **设置**：右上角可选自动翻回 2 / 3 / 5 秒（保存在 localStorage，只存这一项）
-- **音频**：使用 `audio/<韩文>.mp3`（ElevenLabs 男声 Dongjae 生成）；只在点击时播放（符合 iOS 限制），进入某分区时预加载该分区音频
-- **回退**：某个 mp3 缺失或加载失败时，自动改用浏览器的 speechSynthesis（ko-KR，语速 0.8），右下角会有小字提示
-- 支持横竖屏、深色模式；iPad 竖屏一行可放 4 张卡
+- **两套发音**：右上角设置里切换「AI 音（ElevenLabs）」/「标准音（微软）」，默认 AI 音；卡片、行标题和对比练习的「依次播放」都跟随当前选择
+- **对比**：卡片背面的「对比」按钮先播 AI 音，停 0.8 秒，再播标准音
+- **设置**：发音来源、自动翻回 2 / 3 / 5 秒，保存在 localStorage（只存设置）
+- **音频**：只在点击时播放（符合 iOS 限制），进入某分区时预加载该分区、当前来源的音频
+- **回退**：当前来源缺文件或加载失败 → 自动用另一个来源 → 再不行用浏览器 speechSynthesis（ko-KR，语速 0.8），右下角会有小字提示
+- 支持横竖屏、深色模式、刘海屏和底部横条（safe-area）；iPad 竖屏一行 4 张卡，iPhone 一行 3 张卡（辅音表的行标题放在三张卡上方）；Mac 宽屏下内容最大宽 960px 居中；所有按钮和卡片的点击区域至少 44px
+
+## 两套音频
+
+| | AI 音 | 标准音 |
+|---|---|---|
+| 位置 | `audio/<韩文>.mp3` | `audio/ms/<韩文>.mp3` |
+| 来源 | ElevenLabs，男声 Dongjae，模型 `eleven_v4` | 微软 Edge 神经语音（edge-tts），男声 `ko-KR-InJoonNeural`，语速 -10% |
+| 脚本 | `scripts/gen_audio.py` | `scripts/gen_audio_ms.py` |
+| 需要 key | 需要 `ELEVENLABS_API_KEY` | 不需要 |
+
+两套内容完全一致：39 个例字 + 14 个对比单词，共 53 个文件。生成列表在 `scripts/audio_items.py`，两个脚本共用。单个音节的请求文本末尾加句号（如「가.」），减少怪语调；单词不加。
 
 ## 开启 GitHub Pages
 
@@ -31,7 +44,7 @@
 
 ## 在 Mac 上运行音频脚本
 
-音频已经生成并提交在 `audio/` 里，**一般不需要重新运行**。如果想替换某些音频，按下面操作。
+两套音频都已经生成并提交，**一般不需要重新运行**。如果想替换某些音频，按下面操作。
 
 ### 1. 安装依赖（只需一次）
 
@@ -42,7 +55,7 @@ source .venv/bin/activate
 pip install -r scripts/requirements.txt
 ```
 
-### 2. 设置 API key
+### 2. 设置 API key（只有 ElevenLabs 需要）
 
 在当前终端里设置环境变量（只对这个终端窗口有效，不会写进任何文件）：
 
@@ -55,13 +68,16 @@ export ELEVENLABS_API_KEY='你的 ElevenLabs API key'
 ### 3. 生成音频
 
 ```bash
-python3 scripts/gen_audio.py
+python3 scripts/gen_audio.py      # AI 音（ElevenLabs）→ audio/
+python3 scripts/gen_audio_ms.py   # 标准音（微软）→ audio/ms/，不需要 key
 ```
+
+两个脚本的行为相同：
 
 - 已存在的文件会自动跳过，只生成缺失的
 - 每个请求间隔 0.5 秒，失败会自动重试 2 次，结束时打印成功 / 跳过 / 失败清单
-- 声音：Dongjae（voice_id `M7AHsCtFdpWTIL58I3ap`），模型 `eleven_v4`；如果该模型报错，脚本会自动改用 `eleven_multilingual_v2` 并在输出中提示
-- 单个音节的请求文本末尾会加句号（如「가.」），减少怪语调；单词不加
+- ElevenLabs：声音 Dongjae（voice_id `M7AHsCtFdpWTIL58I3ap`），模型 `eleven_v4`；如果该模型报错，脚本会自动改用 `eleven_multilingual_v2` 并在输出中提示
+- 微软：需要能访问 `speech.platform.bing.com`；如果设置了 `HTTPS_PROXY`，脚本会自动走代理。连不上时会直接停止并提示，不会逐个重试
 
 ## 重新生成单个音频
 
@@ -74,6 +90,10 @@ python3 scripts/gen_audio.py
 
 # 方式二：直接指定要重做的音节/单词，--force 表示覆盖已有文件
 python3 scripts/gen_audio.py --force 가 불
+
+# 标准音（微软）同理，文件在 audio/ms/
+rm audio/ms/가.mp3 && python3 scripts/gen_audio_ms.py
+python3 scripts/gen_audio_ms.py --force 가 불
 ```
 
 每次生成的语调会略有不同，不满意可以多试几次。生成后提交并推送即可：
@@ -91,11 +111,14 @@ index.html            页面结构
 style.css             样式（含深色模式、横竖屏适配）
 app.js                渲染与交互（翻转、播放、依次播放、回退、设置）
 data.js               罗马音、字母名、例字、分组、对比词
-audio/                53 个 mp3，文件名即韩文（网页中用 encodeURIComponent 引用）
-scripts/gen_audio.py  ElevenLabs 音频生成脚本
+audio/                AI 音：53 个 mp3，文件名即韩文（网页中用 encodeURIComponent 引用）
+audio/ms/             标准音：同样的 53 个 mp3
+scripts/audio_items.py   两套音频共用的生成列表
+scripts/gen_audio.py     ElevenLabs 音频生成脚本
+scripts/gen_audio_ms.py  微软 Edge 神经语音生成脚本
 scripts/requirements.txt
 ```
 
 ## 修改内容
 
-所有文字数据都在 `data.js`。如果新增或修改了例字/单词，也要同步修改 `scripts/gen_audio.py` 里的 `SYLLABLES` / `WORDS` 列表，再运行脚本生成新音频。
+所有文字数据都在 `data.js`。如果新增或修改了例字/单词，也要同步修改 `scripts/audio_items.py` 里的 `SYLLABLES` / `WORDS` 列表，再运行两个脚本生成新音频。

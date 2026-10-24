@@ -7,15 +7,22 @@
   var SETTINGS_KEY = 'k40-settings';
   var FLIP_OPTIONS = [2, 3, 5];
 
-  /* ---------- 设置（localStorage 只存自动翻回秒数） ---------- */
+  // 两套发音来源；缺文件时自动换另一套，再不行才用系统语音
+  var SOURCES = {
+    el: { label: 'AI 音', dir: 'audio/' },
+    ms: { label: '标准音', dir: 'audio/ms/' }
+  };
+
+  /* ---------- 设置（localStorage 只存设置） ---------- */
 
   var settings = loadSettings();
 
   function loadSettings() {
-    var s = { flipBack: 3 };
+    var s = { flipBack: 3, source: 'el' };
     try {
       var saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
       if (saved && FLIP_OPTIONS.indexOf(saved.flipBack) !== -1) s.flipBack = saved.flipBack;
+      if (saved && SOURCES[saved.source]) s.source = saved.source;
     } catch (e) { /* 隐私模式等情况下忽略 */ }
     return s;
   }
@@ -43,8 +50,12 @@
     return node;
   }
 
-  function audioUrl(text) {
-    return 'audio/' + encodeURIComponent(text) + '.mp3';
+  function audioUrl(text, source) {
+    return SOURCES[source].dir + encodeURIComponent(text) + '.mp3';
+  }
+
+  function otherSource(source) {
+    return source === 'el' ? 'ms' : 'el';
   }
 
   function sleep(ms) {
@@ -66,8 +77,8 @@
   var player = new Audio();
   player.preload = 'auto';
 
-  var missing = {};          // 已知缺失或加载失败的音频
-  var preloaded = {};        // 已预加载过的音频
+  var missing = {};          // '来源:文字' → 已知缺失或加载失败
+  var preloaded = {};        // '来源:文字' → 已预加载过
   var current = null;        // 正在播放的那一次 { finish }
 
   function stopAudio() {
@@ -78,57 +89,75 @@
     }
   }
 
-  // 播放一个音节/单词；返回 Promise，播完（或被打断）时 resolve
-  function playText(text) {
+  // 播放一个音节/单词；source 省略时用设置里的来源。
+  // 返回 Promise，播完（或被打断）时 resolve。
+  function playText(text, source) {
+    source = source || settings.source;
     stopAudio();
     return new Promise(function (resolve) {
       var done = false;
-      var errored = false;
-      var safety = setTimeout(finish, 8000);
+      var detach = null;
+      var safety = setTimeout(finish, 10000);
+      var chain = [source, otherSource(source)].filter(function (s) {
+        return !missing[s + ':' + text];
+      });
 
-      function cleanup() {
-        clearTimeout(safety);
-        player.removeEventListener('ended', finish);
-        player.removeEventListener('error', onError);
-      }
       function finish() {
         if (done) return;
         done = true;
-        cleanup();
+        clearTimeout(safety);
+        if (detach) detach();
         if (current === me) current = null;
         resolve();
       }
-      function onError() {
-        // 404 时 error 事件和 play() 的 reject 都会触发，只回退一次
-        if (done || errored) return;
-        errored = true;
-        cleanup();
-        missing[text] = true;
-        speak(text).then(finish);
+
+      function tryNext() {
+        if (done) return;
+        var src = chain.shift();
+        if (!src) {
+          speak(text).then(finish);
+          return;
+        }
+        if (src !== source) {
+          showNotice('「' + text + '」' + SOURCES[source].label + '缺失，已改用' + SOURCES[src].label);
+        }
+        attempt(src);
+      }
+
+      function attempt(src) {
+        var failed = false;
+        function onEnded() { finish(); }
+        function onError() {
+          // 404 时 error 事件和 play() 的 reject 都会触发，只处理一次
+          if (done || failed) return;
+          failed = true;
+          detach();
+          missing[src + ':' + text] = true;
+          tryNext();
+        }
+        detach = function () {
+          player.removeEventListener('ended', onEnded);
+          player.removeEventListener('error', onError);
+        };
+        player.addEventListener('ended', onEnded);
+        player.addEventListener('error', onError);
+        player.src = audioUrl(text, src);
+        var p;
+        try { p = player.play(); } catch (e) { onError(); return; }
+        if (p && p.catch) {
+          p.catch(function (err) {
+            if (done || failed) return;
+            // 被新的播放打断（AbortError）属于正常情况
+            if (err && err.name === 'AbortError') return;
+            if (err && err.name === 'NotAllowedError') { finish(); return; }
+            onError();
+          });
+        }
       }
 
       var me = { finish: finish };
       current = me;
-
-      if (missing[text]) {
-        speak(text).then(finish);
-        return;
-      }
-
-      player.addEventListener('ended', finish);
-      player.addEventListener('error', onError);
-      player.src = audioUrl(text);
-      var p;
-      try { p = player.play(); } catch (e) { onError(); return; }
-      if (p && p.catch) {
-        p.catch(function (err) {
-          if (done) return;
-          // 被新的播放打断（AbortError）属于正常情况；其他错误按缺失处理
-          if (err && err.name === 'AbortError') return;
-          if (err && err.name === 'NotAllowedError') { finish(); return; }
-          onError();
-        });
-      }
+      tryNext();
     });
   }
 
@@ -173,22 +202,22 @@
     noticeTimer = setTimeout(function () { noticeEl.hidden = true; }, 5000);
   }
 
-  /* ---------- 预加载：只拉取当前分区的音频，顺便发现缺失文件 ---------- */
+  /* ---------- 预加载：只拉取当前分区、当前来源的音频，顺便发现缺失文件 ---------- */
 
   function preload(texts) {
     if (!window.fetch || location.protocol === 'file:') return;
-    var queue = texts.filter(function (t) { return !preloaded[t]; });
-    queue.forEach(function (t) { preloaded[t] = true; });
-    var workers = 4;
+    var source = settings.source;
+    var queue = texts.filter(function (t) { return !preloaded[source + ':' + t]; });
+    queue.forEach(function (t) { preloaded[source + ':' + t] = true; });
     function next() {
       var t = queue.shift();
       if (!t) return Promise.resolve();
-      return fetch(audioUrl(t)).then(function (res) {
-        if (res.status === 404) missing[t] = true;
+      return fetch(audioUrl(t, source)).then(function (res) {
+        if (res.status === 404) missing[source + ':' + t] = true;
         return res.ok ? res.blob() : null;
       }).catch(function () { /* 网络问题时等到播放再判断 */ }).then(next);
     }
-    for (var i = 0; i < workers; i++) next();
+    for (var i = 0; i < 4; i++) next();
   }
 
   /* ---------- 依次播放 ---------- */
@@ -201,41 +230,75 @@
     for (var i = 0; i < active.length; i++) active[i].classList.remove('playing', 'active');
   }
 
-  // items: [{ text, node }]; trigger: 被点击的按钮
-  function playSequence(items, trigger) {
+  // items: [{ text, node, source? }]；trigger: 被点击的按钮；onStep(item): 每段开始时回调。
+  // 返回 Promise，播完或被打断时 resolve。
+  function playSequence(items, trigger, onStep) {
     cancelSequence();
     var my = seqToken;
     if (trigger) trigger.classList.add('active');
     var i = 0;
-    function step() {
-      if (my !== seqToken) return;
-      if (i >= items.length) {
-        if (trigger) trigger.classList.remove('active');
-        return;
+    return new Promise(function (resolve) {
+      function step() {
+        if (my !== seqToken) { resolve(); return; }
+        if (i >= items.length) {
+          if (trigger) trigger.classList.remove('active');
+          resolve();
+          return;
+        }
+        var item = items[i++];
+        item.node.classList.add('playing');
+        if (onStep) onStep(item);
+        // 第一个 playText 在点击回调里同步调用，满足 iOS 的手势要求
+        playText(item.text, item.source).then(function () {
+          item.node.classList.remove('playing');
+          if (my !== seqToken) { resolve(); return; }
+          if (i < items.length) sleep(SEQ_GAP_MS).then(step);
+          else step();
+        });
       }
-      var item = items[i++];
-      item.node.classList.add('playing');
-      // 第一个 playText 在点击回调里同步调用，满足 iOS 的手势要求
-      playText(item.text).then(function () {
-        item.node.classList.remove('playing');
-        if (my !== seqToken) return;
-        if (i < items.length) sleep(SEQ_GAP_MS).then(step);
-        else step();
-      });
-    }
-    step();
+      step();
+    });
   }
 
   /* ---------- 卡片 ---------- */
 
-  function flipCard(card) {
-    cancelSequence();
-    card.classList.add('flipped');
+  function setFlipped(card, on) {
+    card.classList.toggle('flipped', on);
+    var cmp = card.querySelector('.cmp-btn');
+    if (cmp) cmp.tabIndex = on ? 0 : -1;
+  }
+
+  function scheduleFlipBack(card) {
     clearTimeout(card._flipTimer);
     card._flipTimer = setTimeout(function () {
-      card.classList.remove('flipped');
+      setFlipped(card, false);
     }, settings.flipBack * 1000);
+  }
+
+  function flipCard(card) {
+    cancelSequence();
+    setFlipped(card, true);
+    scheduleFlipBack(card);
     playText(card.getAttribute('data-text'));
+  }
+
+  // 「对比」：先 AI 音，停 0.8 秒，再标准音
+  function compareCard(card, btn) {
+    var text = card.getAttribute('data-text');
+    var pill = btn.querySelector('.cmp-pill');
+    var my = card._cmpRun = (card._cmpRun || 0) + 1;
+    clearTimeout(card._flipTimer);
+    var items = ['el', 'ms'].map(function (s) {
+      return { text: text, node: card, source: s };
+    });
+    playSequence(items, btn, function (item) {
+      pill.textContent = SOURCES[item.source].label;
+    }).then(function () {
+      // 对比途中又点了一次「对比」时，由新的那次负责收尾
+      if (card._cmpRun !== my) return;
+      pill.textContent = '对比';
+      scheduleFlipBack(card);
+    });
   }
 
   function makeCard(ch, info, opts) {
@@ -249,10 +312,18 @@
       el('dl', { class: 'info' }, [
         el('dt', { text: '例字' }), el('dd', { text: info.example }),
         el('dt', { text: '字母名' }), el('dd', { text: info.name })
-      ])
+      ]),
+      el('button', {
+        type: 'button',
+        class: 'cmp-btn',
+        tabindex: '-1',
+        'aria-label': '对比：先播 AI 音，再播标准音'
+      }, [el('span', { class: 'cmp-pill', text: '对比' })])
     ]);
-    return el('button', {
-      type: 'button',
+    // 卡片里要放「对比」按钮，所以卡片本身用 div[role=button]（button 不能嵌套 button）
+    return el('div', {
+      role: 'button',
+      tabindex: '0',
       class: 'card' + (opts.tone ? ' tone-' + opts.tone : ''),
       'data-text': info.example,
       'aria-label': ch + '，罗马音 ' + info.roman + '，例字 ' + info.example + '，字母名 ' + info.name
@@ -265,7 +336,7 @@
 
   function renderConsonants() {
     var table = document.getElementById('consonant-table');
-    table.appendChild(el('div'));
+    table.appendChild(el('div', { class: 'corner' }));
     D.consonantColumns.forEach(function (c) {
       table.appendChild(el('div', { class: 'col-head ' + c.key, text: c.label }));
     });
@@ -359,10 +430,12 @@
   /* ---------- 标签页 ---------- */
 
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  var currentTab = 'consonants';
 
   function selectTab(name) {
     cancelSequence();
     stopAudio();
+    currentTab = name;
     tabs.forEach(function (t) {
       var on = t.getAttribute('data-tab') === name;
       t.setAttribute('aria-selected', on ? 'true' : 'false');
@@ -383,12 +456,16 @@
   var setBtn = document.getElementById('settings-btn');
   var setPop = document.getElementById('settings-pop');
   var setVal = document.getElementById('settings-value');
-  var segBtns = Array.prototype.slice.call(setPop.querySelectorAll('[data-sec]'));
+  var secBtns = Array.prototype.slice.call(setPop.querySelectorAll('[data-sec]'));
+  var srcBtns = Array.prototype.slice.call(setPop.querySelectorAll('[data-source]'));
 
   function syncSettingsUI() {
-    setVal.textContent = settings.flipBack + ' 秒';
-    segBtns.forEach(function (b) {
+    setVal.textContent = SOURCES[settings.source].label + ' · ' + settings.flipBack + ' 秒';
+    secBtns.forEach(function (b) {
       b.setAttribute('aria-checked', Number(b.getAttribute('data-sec')) === settings.flipBack ? 'true' : 'false');
+    });
+    srcBtns.forEach(function (b) {
+      b.setAttribute('aria-checked', b.getAttribute('data-source') === settings.source ? 'true' : 'false');
     });
   }
 
@@ -405,7 +482,7 @@
   document.addEventListener('click', function () { togglePop(false); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') togglePop(false); });
 
-  segBtns.forEach(function (b) {
+  secBtns.forEach(function (b) {
     b.addEventListener('click', function () {
       settings.flipBack = Number(b.getAttribute('data-sec'));
       saveSettings();
@@ -413,11 +490,32 @@
     });
   });
 
-  /* ---------- 卡片点击（事件委托） ---------- */
+  srcBtns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      settings.source = b.getAttribute('data-source');
+      saveSettings();
+      syncSettingsUI();
+      preload(sectionTexts[currentTab]);
+    });
+  });
+
+  /* ---------- 卡片点击 / 键盘（事件委托） ---------- */
 
   document.addEventListener('click', function (e) {
-    var card = e.target.closest && e.target.closest('.card');
-    if (card) flipCard(card);
+    if (!e.target.closest) return;
+    var card = e.target.closest('.card');
+    if (!card) return;
+    var cmp = e.target.closest('.cmp-btn');
+    if (cmp && card.classList.contains('flipped')) compareCard(card, cmp);
+    else flipCard(card);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if ((e.key === 'Enter' || e.key === ' ') && t.classList && t.classList.contains('card')) {
+      e.preventDefault();
+      flipCard(t);
+    }
   });
 
   /* ---------- 启动 ---------- */

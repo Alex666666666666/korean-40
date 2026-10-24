@@ -21,6 +21,9 @@
   --tense-ink: #22774a;
 
   --radius: 16px;
+  --maxw: 960px;          /* 宽屏下内容最大宽度 */
+  --pad-l: max(calc(16px + env(safe-area-inset-left)), calc((100% - var(--maxw)) / 2));
+  --pad-r: max(calc(16px + env(safe-area-inset-right)), calc((100% - var(--maxw)) / 2));
   --gap: 12px;
   --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Apple SD Gothic Neo",
           "Noto Sans KR", "Noto Sans SC", "Malgun Gothic", "Microsoft YaHei", sans-serif;
@@ -76,7 +79,7 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: calc(10px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left));
+  padding: calc(10px + env(safe-area-inset-top)) var(--pad-r) 10px var(--pad-l);
   background: var(--bg);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   -webkit-backdrop-filter: saturate(1.6) blur(14px);
@@ -105,7 +108,7 @@ button {
 
 .tab {
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 10px;
   border: 0;
   border-radius: 9px;
@@ -129,7 +132,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -143,7 +146,11 @@ button {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  width: 240px;
+  z-index: 30;
+  width: min(280px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  max-height: calc(100vh - 90px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -159,6 +166,8 @@ button {
   margin-bottom: 8px;
 }
 
+.seg + .pop-label { margin-top: 14px; }
+
 .seg {
   display: flex;
   gap: 4px;
@@ -168,8 +177,13 @@ button {
 }
 
 .seg button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
+  line-height: 1.2;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -182,12 +196,16 @@ button {
   color: var(--accent-ink);
 }
 
+.seg small {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: .75;
+}
+
 /* ---------- 主体 ---------- */
 
 main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 8px calc(16px + env(safe-area-inset-right)) 24px calc(16px + env(safe-area-inset-left));
+  padding: 8px var(--pad-r) 24px var(--pad-l);
 }
 
 .panel[hidden] { display: none; }
@@ -214,7 +232,8 @@ main {
 
 .ctable {
   display: grid;
-  grid-template-columns: minmax(64px, 110px) repeat(3, minmax(0, 1fr));
+  /* 卡片最大 210px，Mac 宽屏下不会被拉得太大 */
+  grid-template-columns: minmax(64px, 110px) repeat(3, minmax(0, 210px));
   gap: var(--gap);
 }
 
@@ -359,6 +378,40 @@ main {
   font-weight: 600;
 }
 
+/* 背面「对比」按钮：按钮本身 44px 高（点击区域），里面的小药丸是视觉部分 */
+.cmp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: none;   /* 未翻转时不能误触 */
+}
+
+.card.flipped .cmp-btn { pointer-events: auto; }
+
+.cmp-pill {
+  padding: 4px 16px;
+  border: 1.5px solid var(--tone-ink, var(--accent));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--tone-ink, var(--accent));
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.cmp-btn.active .cmp-pill {
+  background: var(--tone-ink, var(--accent));
+  color: var(--surface);
+}
+
 /* 播放中高亮 */
 .card.playing .face,
 .word.playing {
@@ -483,14 +536,44 @@ main {
 
 /* 窄屏（手机竖屏） */
 @media (max-width: 560px) {
+  :root { --gap: 8px; }
   .topbar { flex-wrap: wrap; row-gap: 8px; }
   .tabs { order: 3; flex-basis: 100%; max-width: none; }
   .settings { margin-left: auto; }
-  .ctable { grid-template-columns: 56px repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .row-title { font-size: 14px; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
-  .card, .word { min-height: 104px; }
-  .info dt { font-size: 11px; }
+
+  /* 辅音表：行标题放在三张卡上方，三张卡一行排开 */
+  .ctable { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ctable .corner { display: none; }
+  .row-title {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: 44px;
+    margin-top: 6px;
+    padding: 4px 6px 4px 14px;
+    font-size: 16px;
+    box-shadow: none;
+  }
+  .row-title .play-icon { order: -1; width: 32px; height: 32px; margin-left: -8px; }
+
+  .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* 竖长一点，背面放得下罗马音、例字、字母名和「对比」 */
+  .card { aspect-ratio: 4 / 5; min-height: 120px; }
+  .glyph { font-size: clamp(48px, 15vw, 64px); }
+  .combo { font-size: 13px; }
+  .face { padding: 6px 4px; }
+  .roman { font-size: 18px; }
+  .info { margin-top: 6px; gap: 0 5px; }
+  .info dt { font-size: 10px; }
+  .info dd { font-size: 16px; }
+  .cmp-btn { margin-top: 0; }
+  .cmp-pill { padding: 3px 12px; font-size: 12px; }
+
+  .pair { padding: 12px; }
+  .word { min-height: 104px; padding: 10px 4px; }
+  .word-ko { font-size: clamp(30px, 9vw, 40px); }
+  .word-zh { font-size: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
