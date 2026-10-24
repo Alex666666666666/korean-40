@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151517" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="韩语 40 音">
+  <title>韩语 40 音</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="title">韩语 40 音</h1>
+    <nav class="tabs" role="tablist" aria-label="分区">
+      <button class="tab" role="tab" id="tab-consonants" aria-controls="panel-consonants" aria-selected="true" data-tab="consonants">辅音</button>
+      <button class="tab" role="tab" id="tab-vowels" aria-controls="panel-vowels" aria-selected="false" data-tab="vowels">元音</button>
+      <button class="tab" role="tab" id="tab-pairs" aria-controls="panel-pairs" aria-selected="false" data-tab="pairs">对比练习</button>
+    </nav>
+    <div class="settings">
+      <button class="icon-btn" id="settings-btn" type="button" aria-label="设置：自动翻回秒数" aria-expanded="false" aria-controls="settings-pop">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/></svg>
+        <span id="settings-value">3 秒</span>
+      </button>
+      <div class="popover" id="settings-pop" hidden>
+        <div class="pop-label">卡片自动翻回</div>
+        <div class="seg" role="radiogroup" aria-label="自动翻回秒数">
+          <button type="button" role="radio" data-sec="2">2 秒</button>
+          <button type="button" role="radio" data-sec="3">3 秒</button>
+          <button type="button" role="radio" data-sec="5">5 秒</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" id="panel-consonants" role="tabpanel" aria-labelledby="tab-consonants">
+      <h2 class="sec-title">4 套辅音</h2>
+      <p class="sec-rule">每行同一发音部位：松音 → 送气音 → 紧音。点击行标题依次播放。</p>
+      <div class="ctable" id="consonant-table"></div>
+      <h2 class="sec-title">其他辅音</h2>
+      <div class="grid" id="other-consonants"></div>
+    </section>
+
+    <section class="panel" id="panel-vowels" role="tabpanel" aria-labelledby="tab-vowels" hidden>
+      <div id="vowel-groups"></div>
+    </section>
+
+    <section class="panel" id="panel-pairs" role="tabpanel" aria-labelledby="tab-pairs" hidden>
+      <p class="sec-rule">听辨松音、送气音、紧音的区别。点击单词播放，或点「依次播放」连续听一组。</p>
+      <div id="pair-groups"></div>
+    </section>
+  </main>
+
+  <footer class="foot">点击卡片翻转并发音 · 翻转中再点一次重播</footer>
+
+  <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+
+  <noscript><p class="noscript">此页面需要开启 JavaScript。</p></noscript>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
